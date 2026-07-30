@@ -65,7 +65,31 @@ bash run_functionality_segmentation.sh
 
 Outputs are saved to 'demo/outputs/example_scene/' -->
 
-## Run Evaluation on SceneFun3D
+## Data Preparation
+We download the data split of SceneFun3D using the published scripts of Fun3DU.
+1. Create dataset root folder `$ROOT` (`datasets/scenefun3d/` is the default path in the scripts).
+2. Download the file lists folder from the original dataset repo and put it in the `$ROOT`.
+3. Create the lists of two splits by running the following scripts:
+```bash
+cd data_preparation
+python make_video_list.py train
+python make_video_list.py val
+```
+4. Download the data splits: 
+```bash
+python sun3d/data_asset_download.py --split custom --video_id_csv $ROOT/benchmark_file_lists/val_set.csv --download_dir $ROOT/val --dataset_asset laser_scan_5mm crop_mask annotations descriptions hires_wide hires_wide_intrinsics hires_depth hires_poses
+
+python sun3d/data_asset_download.py --split custom --video_id_csv $ROOT/benchmark_file_lists/train_set.csv --download_dir $ROOT/train --dataset_asset laser_scan_5mm crop_mask annotations descriptions hires_wide hires_wide_intrinsics hires_depth hires_poses
+```
+
+Run the following script to prepare the scenefun3d data for the pipeline. The step includes converting data structures and preprocessing the point clouds.
+```bash
+bash scenefun3d_batch_data_preprocess.sh <batch_id> # The script prepares the data batch-wise. One batch contains 10 scenes by default.
+```
+
+
+
+## Run T-FunS3D on SceneFun3D
 Before running this script, adjust the folowings: 
 1. `ROOT`: dataset root
 2. `OUTPUT_DIRECTORY`, `OUTPUT_FOLDER_DIRECTORY`: output paths
@@ -91,7 +115,7 @@ If you find T-FunS3D useful for your research and applications, please cite us u
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for full terms. Code from Third-party (e.g., [OpenMask3D](https://github.com/OpenMask3D/openmask3d), [SceneFun3D]()) retains its original license.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for full terms. Code from Third-party (e.g., [OpenMask3D](https://github.com/OpenMask3D/openmask3d), [SceneFun3D](https://scenefun3d.github.io/documentation/), [Fun3DU](https://github.com/tev-fbk/fun3du)) retains its original license.
 
 ## Acknowledgements
-We build on prior advances in open-vocabulary 3D segementation, foundation models, and vision-language models. Our codebase utilizes code from [OpenMask3D]((https://github.com/OpenMask3D/openmask3d)), [Fun3DU](https://github.com/tev-fbk/fun3du), [FG-CLIP](https://huggingface.co/qihoo360/fg-clip-base), [QWen3](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507), and [Molmo](https://github.com/allenai/molmo). We sincerely appreciate the authors for their wonderful work and for releasing their code, models, and data processing scripts.
+We build on prior advances in open-vocabulary 3D segementation, foundation models, and vision-language models. Our codebase is implemented based on [OpenMask3D](https://github.com/OpenMask3D/openmask3d), [SceneFun3D](https://scenefun3d.github.io/documentation/), [Fun3DU](https://github.com/tev-fbk/fun3du), [FG-CLIP](https://huggingface.co/qihoo360/fg-clip-base), [QWen3](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507), and [Molmo](https://github.com/allenai/molmo). We sincerely appreciate the authors for their wonderful work and for releasing their code, models, and data processing scripts.
