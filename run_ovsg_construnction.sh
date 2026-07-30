@@ -11,7 +11,7 @@ set -e
 # --------
 # NOTE: SET THESE PARAMETERS BASED ON YOUR SCENE!
 # data paths
-ROOT="$(pwd)/Datasets/scenefun3d"
+ROOT="$(pwd)/datasets/scenefun3d"
 SPLIT="train"
 START=1
 END=2
