@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "t-funs3d"
+description = "T-FunS3D: Task-Driven Hierarchical Open-Vocabulary 3D Functionality Segmentation"
+authors = [
+    { name = "Jingkun Feng" },
+    { name = "Reza Sabzevari" }
+]
+readme = "README.md"
+urls = {github = "https://github.com/EdwardjkFeng/T-FunS3D"}
+dynamic = ["version"]
+
+[tool.setuptools]
+packages = ["t_funs3d"]
+
+[tool.setuptools.dynamic]
+version = {attr = "t_funs3d.__version__"}

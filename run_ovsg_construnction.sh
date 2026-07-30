@@ -1,0 +1,102 @@
+#!/bin/bash
+export OMP_NUM_THREADS=3  # speeds up MinkowskiEngine
+export HF_HOME="/tmp/t-funs3d/cache/" # Specify cache dir for daic compute nodes
+set -e
+
+# RUN OPENMASK3D FOR A BATCH OF SCENES of the SceneFun3D dataset
+# This script performs the following:
+# 1. Compute class agnostic masks and save them
+# 2. Compute mask features for each mask and save them
+
+# --------
+# NOTE: SET THESE PARAMETERS BASED ON YOUR SCENE!
+# data paths
+ROOT="$(pwd)/Datasets/scenefun3d"
+SPLIT="train"
+START=1
+END=2
+
+SCENE_POSE_DIR="processed/pose"
+SCENE_INTRINSIC_PATH="hires_wide_intrinsics"
+SCENE_INTRINSIC_RESOLUTION="[1440,1920]" # change if your intrinsics are based on another resolution
+SCENE_COLOR_IMG_DIR="hires_wide"
+SCENE_DEPTH_IMG_DIR="hires_depth"
+IMG_EXTENSION=".jpg"
+DEPTH_EXTENSION=".png"
+DEPTH_SCALE=1000
+# model ckpt paths
+MASK_MODULE_CKPT_PATH="$(pwd)/checkpoints/scannet200_model.ckpt"
+SAM_CKPT_PATH="$(pwd)/checkpoints/sam_vit_h_4b8939.pth"
+
+# output directories to save masks and mask features
+EXPERIMENT_NAME="eval"
+
+OUTPUT_DIRECTORY="$(pwd)/t-funs3d_outputs" 
+TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
+DATE=$(date +"%Y-%m-%d")
+TIME=$(date +"%H-%M-%S")
+
+OUTPUT_FOLDER_DIRECTORY="${OUTPUT_DIRECTORY}/${EXPERIMENT_NAME}/${DATE}/${TIME}"
+MASK_SAVE_DIR="${OUTPUT_FOLDER_DIRECTORY}/masks"
+MASK_FEATURE_SAVE_DIR="${OUTPUT_FOLDER_DIRECTORY}/mask_features"
+SAVE_VISUALIZATIONS=true #if set to true, saves pyviz3d visualizations
+SAVE_CROPS=true 
+# gpu optimization
+OPTIMIZE_GPU_USAGE=false
+
+cd openmask3d
+
+# 1. Compute class agnostic masks and save them
+echo "[INFO] Extracting class agnostic masks..."
+python class_agnostic_mask_computation/get_masks_scenefun3d.py \
+general.experiment_name=${EXPERIMENT_NAME} \
+general.checkpoint=${MASK_MODULE_CKPT_PATH} \
+general.train_mode=false \
+data.test_mode=test \
+model.num_queries=120 \
+general.use_dbscan=true \
+general.dbscan_eps=0.95 \
+general.dbscan_min_points=50 \
+general.save_visualizations=${SAVE_VISUALIZATIONS} \
+general.mask_save_dir=${MASK_SAVE_DIR} \
+general.filter_out_instances=true \
+general.scores_threshold=0.1 \
+general.iou_threshold=0.2 \
++general.dataset.root=${ROOT} \
++general.dataset.split=${SPLIT} \
++dataset.start=${START} \
++dataset.end=${END} \
+hydra.run.dir="${OUTPUT_FOLDER_DIRECTORY}" 
+echo "[INFO] Mask computation done!"
+
+# get the path of the saved masks
+MASK_FILE_BASE=$(echo $SCENE_PLY_PATH | sed 's:.*/::')
+MASK_FILE_NAME=${MASK_FILE_BASE/.ply/_masks.pt}
+SCENE_MASK_PATH="${OUTPUT_FOLDER_DIRECTORY}/${MASK_FILE_NAME}/masks"
+echo "[INFO] Masks saved to ${SCENE_MASK_PATH}."
+
+# 2. Compute mask features for each mask and save them
+echo "[INFO] Computing mask features..."
+
+python compute_features_scenefun3d.py \
+data.masks.masks_path=${SCENE_MASK_PATH} \
+data.camera.poses_path=${SCENE_POSE_DIR} \
+data.camera.intrinsic_path=${SCENE_INTRINSIC_PATH} \
+data.camera.intrinsic_resolution=${SCENE_INTRINSIC_RESOLUTION} \
+data.depths.depths_path=${SCENE_DEPTH_IMG_DIR} \
+data.depths.depth_scale=${DEPTH_SCALE} \
+data.depths.depths_ext=${DEPTH_EXTENSION} \
+data.images.images_path=${SCENE_COLOR_IMG_DIR} \
+data.images.images_ext=${IMG_EXTENSION} \
+output.output_directory=${MASK_FEATURE_SAVE_DIR} \
+output.save_crops=${SAVE_CROPS} \
+openmask3d.vis_threshold=0.1 \
++dataset.root=${ROOT} \
++dataset.split=${SPLIT} \
++dataset.start=${START} \
++dataset.end=${END} \
++data.dataset="scenefun3d" \
+hydra.run.dir="${OUTPUT_FOLDER_DIRECTORY}" \
+external.sam_checkpoint=${SAM_CKPT_PATH} \
+gpu.optimize_gpu_usage=${OPTIMIZE_GPU_USAGE}
+echo "[INFO] Feature computation done!"
