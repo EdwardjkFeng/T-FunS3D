@@ -12,10 +12,10 @@ import open3d as o3d
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from openmask3d.utils import io
-from openmask3d.utils.evaluator import Segment3DEvaluator
-from openmask3d.utils.misc import np_normalize, sort_alphanumeric
-from openmask3d.utils.sun3d.data_parser import DataParser
+from t_funs3d.utils import io
+from t_funs3d.utils.evaluator import Segment3DEvaluator
+from t_funs3d.utils.misc import np_normalize, sort_alphanumeric
+from t_funs3d.utils.sun3d.data_parser import DataParser
 
 
 def viz_3d_masks(pcd: np.array, gt_mask: np.array, pred_mask: np.array, outfile: str) -> None:
@@ -30,8 +30,6 @@ def viz_3d_masks(pcd: np.array, gt_mask: np.array, pred_mask: np.array, outfile:
     assert (pcd.shape[0] == gt_mask.shape[0]) and (
         pred_mask.shape[0] == gt_mask.shape[0]
     ), " Mask size do not correspond."
-
-    # TODO: assert that colors are in range 0..1 as required by open3d
 
     xyz, rgb = pcd[:, :3].copy(), pcd[:, 3:].copy()
 
@@ -101,7 +99,7 @@ def post_process_pcd(
     return torch.tensor(pred_mask)
 
 
-@hydra.main(config_path="../configs", config_name="func_segm")
+@hydra.main(version_base="1.1", config_path="../config", config_name="functionality_segm")
 def main(args: DictConfig):
 
     evaluate_molmo(args)

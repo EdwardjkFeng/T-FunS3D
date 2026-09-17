@@ -9,7 +9,7 @@ from tqdm import tqdm
 from openmask3d.data.load import Camera, InstanceMasks3D, Images, PointCloud, get_number_of_images
 # from openmask3d.mask_features_computation.utils import initialize_sam_model, mask2box_multi_level, run_sam
 from openmask3d.mask_features_computation.utils import *
-from openmask3d.utils.hf_models import init_clip_visual, init_sam_model, process_sam_points
+from t_funs3d.utils.hf_models import init_clip_visual, init_sam_model, process_sam_points
 
 from transformers import AutoImageProcessor, AutoTokenizer, AutoModelForCausalLM
 import time

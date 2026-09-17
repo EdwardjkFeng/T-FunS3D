@@ -12,7 +12,7 @@ from tqdm import tqdm
 import time
 
 # TIP: add version_base=None to the arguments if you encounter some error  
-@hydra.main(config_path="configs", config_name="openmask3d_inference")
+@hydra.main(version_base="1.1", config_path="config", config_name="openmask3d_inference")
 def main(ctx: DictConfig):
     device = "cpu"  # "mps" if torch.backends.mps.is_available() else "cpu"
     device = get_free_gpu(7000) if torch.cuda.is_available() else device

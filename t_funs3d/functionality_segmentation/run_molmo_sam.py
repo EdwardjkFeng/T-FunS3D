@@ -147,7 +147,7 @@ def save_record(path: str, data: dict):
         )
 
 
-@hydra.main(config_path="../configs", config_name="func_segm")
+@hydra.main(version_base="1.1", config_path="../config", config_name="functionality_segm")
 def molmo_pipeline(args: DictConfig):
 
     """

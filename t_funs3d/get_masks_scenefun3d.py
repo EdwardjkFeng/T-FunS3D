@@ -1,10 +1,22 @@
 import logging
 import os
+import sys
+from pathlib import Path
+
+# OpenMask3D's trainer and Hydra targets use top-level models/datasets/utils.
+MASK_MODULE_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "third-party/openmask3d/openmask3d/class_agnostic_mask_computation"
+)
+if not (MASK_MODULE_DIR / "trainer/trainer.py").is_file():
+    raise ImportError(f"OpenMask3D mask module is missing: {MASK_MODULE_DIR}")
+sys.path.insert(0, str(MASK_MODULE_DIR))
+
 import hydra
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
-from trainer.trainer import InstanceSegmentation, RegularCheckpointing
-from openmask3d.class_agnostic_mask_computation.utils.utils import (
+from trainer.trainer import InstanceSegmentation
+from utils.utils import (
     load_checkpoint_with_missing_or_exsessive_keys,
     load_backbone_checkpoint_with_missing_or_exsessive_keys
 )
@@ -59,14 +71,10 @@ def process_file(filepath):
     return [[coords, features, [], filename, raw_colors, raw_normals, raw_coordinates, 0]] # 2: original_labels, 3: none
     # coordinates, features, labels, self.data[idx]['raw_filepath'].split("/")[-2], raw_color, raw_normals, raw_coordinates, idx
 
-@hydra.main(config_path="conf", config_name="config_base_class_agn_masks_scenefun3d.yaml")
 def get_class_agnostic_masks(cfg: DictConfig):
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     os.chdir(hydra.utils.get_original_cwd())
-    cfg, model, loggers = get_parameters(cfg)
-
-    c_fn = hydra.utils.instantiate(cfg.data.test_collation) #(model.config.data.test_collation)
 
     root_path = cfg.general.dataset.root
     data_split = cfg.general.dataset.split
@@ -77,10 +85,21 @@ def get_class_agnostic_masks(cfg: DictConfig):
 
     # scene_paths = sorted([d for d in os.listdir(scene_dir) if os.path.isdir(os.path.join(scene_dir, d))])
     scene_paths = sorted(glob(os.path.join(scene_dir, "*/*downsampled.ply")))
+    print(f"[INFO] Found {len(scene_paths)} scenes in {scene_dir}")
 
-    start = 0 if cfg.dataset.start is None else int(cfg.dataset.start)
-    end = len(scene_paths) if cfg.dataset.end is None else int(cfg.dataset.end)
+    start = OmegaConf.select(cfg, "dataset.start")
+    end = OmegaConf.select(cfg, "dataset.end")
+    start = 0 if start is None else int(start)
+    end = len(scene_paths) if end is None else int(end)
     scene_paths = scene_paths[start:end]
+    if not scene_paths:
+        raise ValueError(
+            f"No scenes selected in {scene_dir} for slice [{start}:{end}]; "
+            "expected */*downsampled.ply"
+        )
+    os.makedirs(cfg.general.mask_save_dir, exist_ok=True)
+    cfg, model, loggers = get_parameters(cfg)
+    c_fn = hydra.utils.instantiate(cfg.data.test_collation)
 
     for scene_path in scene_paths:
         input_batch = process_file(scene_path)
@@ -106,7 +125,7 @@ def get_class_agnostic_masks(cfg: DictConfig):
     print(f"[INFO] Results saved to {results_path}")
         
 
-@hydra.main(config_path="conf", config_name="config_base_class_agn_masks_single_scene.yaml")
+@hydra.main(version_base="1.1", config_path="config/class_agnostic_masks", config_name="config_base_class_agn_masks_single_scene.yaml")
 def main(cfg: DictConfig):
     get_class_agnostic_masks(cfg)
     

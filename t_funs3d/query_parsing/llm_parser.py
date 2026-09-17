@@ -91,7 +91,7 @@ class LLMParser:
             messages,
             tokenize=False,
             add_generation_prompt=True,
-            enable_thinking=True, # Enable thinking for extracting relations
+            enable_thinking=False, # Enable thinking for extracting relations
         )
         model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)
         

@@ -4,12 +4,12 @@ from omegaconf import DictConfig
 from tqdm import tqdm
 import time
 
-from openmask3d.query_parser.llm_parser import LLMParser
-from openmask3d.utils.sun3d.data_parser import DataParser
-from openmask3d.utils.misc import sort_alphanumeric
+from t_funs3d.query_parsing.llm_parser import LLMParser
+from t_funs3d.utils.sun3d.data_parser import DataParser
+from t_funs3d.utils.misc import sort_alphanumeric
 
 
-@hydra.main(config_path="../configs", config_name="functionality_segm")
+@hydra.main(version_base="1.1", config_path="config", config_name="functionality_segm")
 def main(args: DictConfig):
     llm = LLMParser(model_name=args.llm.model)
     parser = DataParser(args.dataset.root, args.dataset.split)

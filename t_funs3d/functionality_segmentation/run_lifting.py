@@ -188,7 +188,7 @@ def save_record(path: str, n_points: int, data: dict):
         np.savez_compressed(path, acc_f=np.zeros(n_points), n_views=np.asarray([1]))
 
 
-@hydra.main(config_path="../configs", config_name="func_segm")
+@hydra.main(version_base="1.1", config_path="../config", config_name="functionality_segm")
 def run_lifting(args: DictConfig) -> dict:
     """
     Lifts the masks obtained in the previous step
@@ -202,7 +202,6 @@ def run_lifting(args: DictConfig) -> dict:
     start = 0 if args.dataset.start is None else int(args.dataset.start)
     end = len(visits) if args.dataset.end is None else int(args.dataset.end)
     visit_ids = sorted(list(visits))[start:end]
-    # visit_ids = ["421393"]
 
     if args.exp_root is None:
         args.exp_root = ""

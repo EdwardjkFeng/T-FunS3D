@@ -23,7 +23,7 @@ from t_funs3d.utils.sun3d.data_parser import DataParser
 import torch
 import numpy as np
 
-@hydra.main(config_path="configs", config_name="functionality_segm")
+@hydra.main(version_base="1.1", config_path="config", config_name="functionality_segm")
 def make_mask_index(args: DictConfig):
     """
     Query the open vocabulary scene graph for each scene and save the association between descriptions and masks.
@@ -74,7 +74,7 @@ def make_mask_index(args: DictConfig):
                                                      os.path.join(args.exp_root, args.exp_name, "mask_features")))
             masks_frames = parser.get_masks_frames_association(visit_id, 
                                                                video_id, 
-                                                               os.path.join(args.exp_root, args.exp_name, "association")
+                                                               os.path.join(args.exp_root, args.exp_name, "mask_features")
                                                                )["masks"]
             for mask_id, frames in masks_frames.items():
                 if mask_id not in visit_dict['objects']:

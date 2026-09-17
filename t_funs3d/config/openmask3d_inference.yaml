@@ -37,3 +37,7 @@ output:
 
 gpu:
   optimize_gpu_usage: False
+
+hydra:
+  job:
+    chdir: false
