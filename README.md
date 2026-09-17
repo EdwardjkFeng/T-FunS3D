@@ -21,7 +21,8 @@
 ## Requirements
 
 - **Python**: 3.10
-- **PyTorch**: 2.1+ with CUDA 12.1+
+- **PyTorch / CUDA**: the installer pins PyTorch 2.1.2 and CUDA Toolkit 12.1.1.
+- **Driver**: a working NVIDIA driver compatible with CUDA 12.1 (530.30.02 or newer recommended).
 - **GPU**: NVIDIA GPU with ≥16GB VRAM.
 
 ## Installation
@@ -31,17 +32,50 @@
 git clone --recursive https://github.com/EdwardjkFeng/T-FunS3D.git
 cd T-FunS3D
 
-# Automated setup (run from the repository root)
+# Automated setup (creates or reuses the Python 3.10 environment T-FunS3D)
 bash install.sh
-
-# Run the commands in the script one by one in case automatic setup fails.
-# Check the alternatives provided in the script.
-
-# Download checkpoints and example data (also from the repository root)
-bash download_data.sh
 ```
 
-<!-- See [docs/INSTALL.md](docs/INSTALL.md) for manual installation and docker usage. -->
+> [!IMPORTANT]
+> The installer puts `nvcc`, CUDA headers/libraries, GCC 11, and build tools inside
+> `T-FunS3D`. It does not install a system toolkit, modify your NVIDIA driver, or
+> change shell startup files. A different system CUDA version is fine: the driver
+> must support the pinned toolkit. The CUDA version displayed by `nvidia-smi` is
+> the driver's supported version, not proof of an installed toolkit.
+>
+> GPU compute capabilities are detected from all devices visible to PyTorch
+> (respecting `CUDA_VISIBLE_DEVICES`) and used to compile native extensions.
+> CUDA 12.1 cannot support every future NVIDIA GPU: unsupported architectures
+> fail with an explicit message rather than building for the wrong device.
+> Your GPU also needs enough memory for the models you run.
+
+<details> 
+  <summary> Optional installation settings </summary>
+
+  ```bash
+  ENV_NAME=T-FunS3D-test MAX_JOBS=4 bash install.sh
+  # FlashAttention 2 is optional and requires Ampere/Ada/Hopper GPUs.
+  INSTALL_FLASH_ATTN=1 bash install.sh
+  ```
+
+  Use a dedicated environment; rerunning updates its dependencies to the pinned
+  versions. Existing environments must use Python 3.10. `MAX_JOBS` defaults to 2
+  to limit memory usage during compilation. Keep `third-party/segmentator`
+  after installation because its Python package links to that build directory.
+  The script resolves paths relative to itself, so it can also be invoked from
+  another directory. It prints `Starting` and `Completed` for each numbered stage,
+  and names the failing stage if a command stops. Rerun the same command after
+  fixing a failure; the pinned source checkouts under `third-party` are reused.
+  Use `bash install.sh --help` for settings. The last stage checks dependencies
+  and runs CUDA smoke tests. Model checkpoints and datasets are downloaded
+  separately.
+</details>
+
+
+Activate the conda env once installation is completed
+```bash
+conda activate T-FunS3D
+```
 
 <!-- ## Demo
 
@@ -66,9 +100,23 @@ bash run_functionality_segmentation.sh
 Outputs are saved to 'demo/outputs/example_scene/' -->
 
 ## Data Preparation
+### Checkpoints and example data
+Download checkpoints and example data (also from the repository root) by running the download script:
+```bash
+bash download_data.sh
+```
+
+### SceneFun3D dataset
 We download the data split of SceneFun3D using the published scripts of Fun3DU.
 1. Create dataset root folder `$ROOT` (`datasets/scenefun3d/` is the default path in the scripts).
-2. Download the file lists folder from the original dataset repo and put it in the `$ROOT`.
+2. Download the file lists folder from the [original dataset repo](https://github.com/SceneFun3D/scenefun3d/tree/main/benchmark_file_lists) and put it in the `$ROOT`.
+```bash
+export ROOT="$PWD/datasets/scenefun3d"
+mkdir -p "$ROOT/benchmark_file_lists"
+for file in train_val_set.csv train_scenes.txt val_scenes.txt; do
+    curl -fL "https://raw.githubusercontent.com/SceneFun3D/scenefun3d/main/benchmark_file_lists/$file" -o "$ROOT/benchmark_file_lists/$file"
+done
+```
 3. Create the lists of two splits by running the following scripts:
 ```bash
 cd data_preparation

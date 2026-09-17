@@ -169,3 +169,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+third-party/
+
+.vscode/
+checkpoints/
+datasets/
+*outputs/
+cache/

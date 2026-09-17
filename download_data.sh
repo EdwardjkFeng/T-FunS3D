@@ -3,7 +3,7 @@
 # This script creates a checkpoint directory, fetches model weights and sample data,
 # and places them in the expected workspace locations.
 
-mkdir checkpoint && cd checkpoint
+mkdir checkpoints && cd checkpoints
 
 # Download the Mask3D pre-trained model checkpoints for ScanNet200
 wget --no-check-certificate "https://drive.usercontent.google.com/download?id=1emtZ9xCiCuXtkcGO3iIzIRzcmZAFfI_B&export=download&authuser=0&confirm=t&uuid=7242e4da-024f-4cb9-b3ae-fb12bb1e022e&at=AN8xHoorFAQZ_SBG903qLxKUbJMP%3A1750172923367" -O scannet200_val.ckpt

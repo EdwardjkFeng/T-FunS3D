@@ -1,3 +1,4 @@
 [submodule "third-party/openmask3d"]
 	path = third-party/openmask3d
 	url = https://github.com/OpenMask3D/openmask3d.git
+	ignore = untracked
