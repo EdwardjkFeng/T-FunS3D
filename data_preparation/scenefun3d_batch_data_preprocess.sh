@@ -14,7 +14,7 @@ if [ -z "$BATCH_ID" ]; then
     exit 1
 fi
 
-SPLIT="train"
+SPLIT="val"
 SCENE_ROOT="$(pwd)/datasets/scenefun3d/$SPLIT"
 SCENE_IDS=($(ls "$SCENE_ROOT"))
 
@@ -43,7 +43,7 @@ for (( i=START; i<END; i++ )); do
     SCENE_ID="${SCENE_IDS[i]}"
 
     echo "Running preprocessing for $SCENE_ID..."
-    python tools/scenefun3d_data_preprocess.py --base_dir "$DATA_BASE" --visit_id "$SCENE_ID" --split "$SPLIT"
+    python "$(pwd)/data_preparation/scenefun3d_single_data_preprocess.py" --base_dir "$DATA_BASE" --visit_id "$SCENE_ID" --split "$SPLIT"
 done
 
 echo "Batch $BATCH_ID processing complete."
