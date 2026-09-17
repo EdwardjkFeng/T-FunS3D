@@ -1,84 +1,237 @@
-set -e
+#!/usr/bin/env bash
+# Install T-FunS3D on Linux x86_64. CUDA and build tools stay in one Conda env.
+set -euo pipefail
 
-# Note: The following commands were tested with CUDA 12.1.
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ENV_NAME=${ENV_NAME:-T-FunS3D}
+INSTALL_FLASH_ATTN=${INSTALL_FLASH_ATTN:-0}
+export MAX_JOBS=${MAX_JOBS:-2}
 
-conda create -n T-Search3D python=3.10
-conda activate T-Search3D
-pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
-pip install ninja==1.10.2.3
-pip install pytorch-lightning fire imageio tqdm wandb
-pip install python-dotenv==0.21.0 pyviz3d==0.2.32 scipy==1.9.3 plyfile==0.7.4 scikit-learn==1.2.0 trimesh==3.17.1 loguru==0.6.0 albumentations==1.3.0 volumentations==0.1.8
-pip install antlr4-python3-runtime==4.8 black==21.4b2 omegaconf==2.2.0 hydra-core==1.0.5 --no-deps
+OPENMASK="$ROOT/third-party/openmask3d"
+POINTNET="$OPENMASK/openmask3d/class_agnostic_mask_computation/third_party/pointnet2"
+SOURCES="$ROOT/third-party"
+SEGMENTATOR="$SOURCES/segmentator"
+CURRENT_STAGE="startup"
+STAGE_NUMBER=0
+TOTAL_STAGES=10
+if [[ $INSTALL_FLASH_ATTN == 1 ]]; then
+    TOTAL_STAGES=11
+fi
 
-# pip install 'git+https://github.com/facebookresearch/detectron2.git@710e7795d0eeadf9def0e7ef957eea13532e34cf' --no-deps
-pip install 'git+https://github.com/facebookresearch/detectron2.git@ff53992b1985b63bd3262b5a36167098e3dada02' --no-deps
+usage() {
+    cat <<'USAGE'
+Usage: bash install.sh
 
-conda install -y openblas-devel -c anaconda
+Creates or reuses the T-FunS3D Conda environment and installs its CUDA stack.
+Run from any directory. All native source checkouts live under third-party/.
 
-# Install MinkowskiEngine
-# First check your environment
-python -c "import sys; import torch; print('Python version:', sys.version); print('Torch version:', torch.__version__); print('Torch CUDA version:', torch.version.cuda); print('CUDA available:', torch.cuda.is_available());" && gcc --version | head -n 1 | cut -d' ' -f3
-pip install --upgrade setuptools==59.8.0 # setuptools version must be lower than 60.0
-## Option 1
-pip install -U git+https://github.com/NVIDIA/MinkowskiEngine -v --no-deps --config-settings="--blas_include_dirs=${CONDA_PREFIX}/include" --config-settings="--blas=openblas"
-## Option 2
-git clone https://github.com/NVIDIA/MinkowskiEngine.git
-cd MinkowskiEngine
-TORCH_CUDA_ARCH_LIST="YOUR_GPUs_CC+PTX" python setup.py install --blas=openblas --blas_include_dirs=${CONDA_PREFIX}/include --force_cuda
-## If the compilation fails, follow Step 5 in this document and recompile
-## https://github.com/Julie-tang00/Common-envs-issues/blob/main/Cuda12-MinkowskiEngine
-cd ..
+Optional environment variables:
+  ENV_NAME=name          Conda environment (default: T-FunS3D)
+  MAX_JOBS=number        Parallel compiler jobs (default: 2)
+  INSTALL_FLASH_ATTN=1   Also build and test FlashAttention 2 (default: 0)
 
-pip install pynvml==11.4.1 gpustat==1.0.0 tabulate==0.9.0 pytest==7.2.0 tensorboardx==2.5.1 yapf==0.32.0 termcolor==2.1.1 addict==2.4.0 blessed==1.19.1
-pip install gorilla-core==0.2.7.8
-pip install matplotlib==3.7.2
-pip install cython
+Use bash install.sh --help to show this message without installing anything.
+USAGE
+}
+if (( $# )); then
+    if (( $# == 1 )) && [[ $1 == --help ]]; then
+        usage
+        exit 0
+    fi
+    usage >&2
+    exit 2
+fi
 
-pip install pycocotools==2.0.6
-pip install h5py==3.7.0
-pip install transforms3d==0.4.1
-pip install open3d==0.16.0
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
+fail() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+on_exit() {
+    local status=$?
+    if (( status != 0 )); then
+        printf 'Installation stopped in stage "%s" (exit %d).\n' \
+            "$CURRENT_STAGE" "$status" >&2
+    fi
+}
+trap on_exit EXIT
 
-pip install fvcore cloudpickle Pillow
+run_stage() {
+    local label=$1 started=$SECONDS
+    shift
+    STAGE_NUMBER=$((STAGE_NUMBER + 1))
+    CURRENT_STAGE=$label
+    printf '\n[%d/%d] Starting: %s\n' "$STAGE_NUMBER" "$TOTAL_STAGES" "$label"
+    "$@"
+    printf '[%d/%d] Completed: %s (%ds)\n' \
+        "$STAGE_NUMBER" "$TOTAL_STAGES" "$label" "$((SECONDS - started))"
+}
 
-cd openmask3d/class_agnostic_mask_computation/third_party/pointnet2 && pip install .
+check_host() {
+    [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || fail 'Requires Linux x86_64.'
+    [[ $ENV_NAME != base && $ENV_NAME =~ ^[a-zA-Z0-9_.-]+$ ]] || fail 'Use a dedicated Conda environment name (not base).'
+    [[ $MAX_JOBS =~ ^[1-9][0-9]*$ ]] || fail 'MAX_JOBS must be a positive integer.'
+    [[ $INSTALL_FLASH_ATTN == 0 || $INSTALL_FLASH_ATTN == 1 ]] || fail 'INSTALL_FLASH_ATTN must be 0 or 1.'
+    for tool in conda git nvidia-smi; do
+        command -v "$tool" >/dev/null || fail "Missing $tool. Install Miniforge/Git or an NVIDIA driver first."
+    done
+    nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+}
 
-pip install git+https://github.com/openai/CLIP.git@a9b1bf5920416aaeaec965c25dd9e8f98c864f16 --no-deps
-pip install  git+https://github.com/facebookresearch/segment-anything.git@6fdee8f2727f4506cfbbe553e23b895e27956588 --no-deps
+activate_environment() {
+    # Noninteractive Bash has no conda function until conda.sh is sourced.
+    local conda_base
+    conda_base=$(conda info --base)
+    # Conda's compiler activation hooks can read unset backup variables.
+    set +u
+    source "$conda_base/etc/profile.d/conda.sh"
+    if conda env list --json | "$conda_base/bin/python" -c \
+        'import json,sys; from pathlib import Path; sys.exit(not any(Path(p).name == sys.argv[1] for p in json.load(sys.stdin)["envs"]))' "$ENV_NAME"; then
+        conda activate "$ENV_NAME"
+        python -c 'import sys; assert sys.version_info[:2] == (3, 10), "Existing environment must use Python 3.10; choose another ENV_NAME."'
+    else
+        conda create -y -n "$ENV_NAME" --override-channels -c conda-forge python=3.10 pip
+        conda activate "$ENV_NAME"
+    fi
+}
 
-pip install ftfy regex
+install_toolchain() {
+    # The full toolkit supplies nvcc. GCC 11 supports CUDA 12.1 even when the
+    # host's default compiler is too new (for example, Ubuntu 24.04's GCC 13).
+    conda install -y --override-channels -c nvidia/label/cuda-12.1.1 -c conda-forge \
+        cuda-toolkit=12.1.1 gcc_linux-64=11 gxx_linux-64=11 \
+        'libblas=*=*openblas' openblas 'cmake>=3.24,<4' ninja make
+    set -u
+    export CUDA_HOME="$CONDA_PREFIX"
+    export CUDA_PATH="$CONDA_PREFIX"
+    export CUDACXX="$CONDA_PREFIX/bin/nvcc"
+    export CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+    export CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+    export CUDAHOSTCXX="$CXX"
+    export PATH="$CONDA_PREFIX/bin:$PATH"
+    export CMAKE_PREFIX_PATH="$CONDA_PREFIX"
+    export LIBRARY_PATH="$CONDA_PREFIX/lib:$CONDA_PREFIX/targets/x86_64-linux/lib"
+    export LD_LIBRARY_PATH="$LIBRARY_PATH"
+    export PYTHONNOUSERSITE=1
+    unset PYTHONPATH
+    export PIP_CONSTRAINT="$ROOT/requirements-install.txt"
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    "$CUDACXX" --version
+    "$CXX" --version
+}
 
-cd third_party/openmask3d && pip install .
+install_pytorch() {
+    python -m pip install pip==24.0 setuptools==69.5.1 wheel==0.43.0
+    python -m pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 \
+        --index-url https://download.pytorch.org/whl/cu121
+    # Compile for all visible GPUs. The helper rejects architectures too new
+    # for the fixed CUDA/PyTorch versions instead of selecting the wrong GPU.
+    export TORCH_CUDA_ARCH_LIST
+    TORCH_CUDA_ARCH_LIST=$(python "$ROOT/scripts/install_support.py" architectures)
+    printf 'CUDA architectures: %s\n' "$TORCH_CUDA_ARCH_LIST"
+}
 
-cd T-FunS3D && pip install -e .
+install_python_packages() {
+    python -m pip install -r "$ROOT/requirements-install.txt"
+    python -m pip install --no-deps --only-binary=:all: torch-scatter==2.1.2 \
+        --no-index --find-links https://data.pyg.org/whl/torch-2.1.0+cu121.html
+}
 
-# Only for the current version of T-Search3D
-pip install spacy==3.7.2
-pip install numba
-git clone https://github.com/Karbo123/segmentator.git && cd segmentator
-cd csrc && mkdir build && cd build
-cmake .. \
--DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefix_path)'` \
--DPYTHON_INCLUDE_DIR=$(python -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())")  \
--DPYTHON_LIBRARY=$(python -c "import distutils.sysconfig as sysconfig; print(sysconfig.get_config_var('LIBDIR'))") \
--DCMAKE_INSTALL_PREFIX=`python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())'` 
-# If encounter this error "Target "cmTC_f97fd" requires the language dialect "CUDA17" (with compiler
-# extensions), but CMake does not know the compile flags to use to enable it.", 
-# please refer to https://stackoverflow.com/questions/61540127/set-cxx-standard-to-c17-when-combining-c-and-cuda-in-cmakelists.
+fetch_source() {
+    local name=$1 url=$2 revision=$3
+    if [[ ! -d $SOURCES/$name ]]; then
+        git clone "$url" "$SOURCES/$name"
+        git -C "$SOURCES/$name" checkout --detach "$revision"
+    fi
+    [[ $(git -C "$SOURCES/$name" rev-parse HEAD) == "$revision" ]] || \
+        fail "Unexpected revision in $SOURCES/$name; move it aside and retry."
+}
 
-# Modifying the CMakeLists.txt file as follows:
-# set(CMAKE_CXX_STANDARD 17)
-# set(CMAKE_CUDA_STANDARD 14)
-# set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
-# set(CMAKE_CXX_STANDARD_REQUIRED TRUE) 
-make && make install # after install, please do not delete this folder (as we only create a symbolic link)
+prepare_sources() {
+    if [[ ! -f $OPENMASK/pyproject.toml ]]; then
+        git -C "$ROOT" submodule update --init --recursive -- third-party/openmask3d
+    fi
+    [[ -f $POINTNET/setup.py ]] || fail "Missing pointnet2 sources in $POINTNET"
+    mkdir -p "$SOURCES"
+    fetch_source MinkowskiEngine https://github.com/NVIDIA/MinkowskiEngine.git 9f81ae66b33b883cd08ee4f64d08cf633608b118
+    fetch_source segmentator https://github.com/Karbo123/segmentator.git 4c6126551685166c6c300551e9ad63db988928c4
+    python "$ROOT/scripts/install_support.py" patch "$SOURCES"
+}
 
+build_cuda_extensions() {
+    # These setup scripts need the already-installed torch and local nvcc.
+    python -m pip install --no-build-isolation \
+        'git+https://github.com/facebookresearch/detectron2.git@ff53992b1985b63bd3262b5a36167098e3dada02'
+    # MinkowskiEngine parses --blas itself. pip --config-settings would not
+    # forward these options to setup.py, so build one wheel explicitly.
+    (
+        cd "$SOURCES/MinkowskiEngine"
+        python setup.py bdist_wheel --blas=openblas \
+            --blas_include_dirs="$CONDA_PREFIX/include" \
+            --blas_library_dirs="$CONDA_PREFIX/lib" --force_cuda
+        python -m pip install --no-deps --force-reinstall dist/*.whl
+    )
+    python -m pip install --no-build-isolation --no-deps "$POINTNET"
+}
 
-# Install Flash Attention 2 for pytorch 2.1.0 cuda 11.8
-pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.6.3/flash_attn-2.6.3+cu118torch2.1cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+install_project_packages() {
+    python -m pip install --no-build-isolation \
+        'git+https://github.com/openai/CLIP.git@a9b1bf5920416aaeaec965c25dd9e8f98c864f16' \
+        'git+https://github.com/facebookresearch/segment-anything.git@6fdee8f2727f4506cfbbe553e23b895e27956588'
+    # Editable installs retain nested OpenMask3D modules and configs.
+    python -m pip install --no-build-isolation --no-deps -e "$OPENMASK" -e "$ROOT"
+}
 
-# Install GLIP
-pip install einops shapely timm yacs tensorboardX ftfy prettytable pymongo
-pip install nltk inflect
-cd GLIP && pip install -e .
+build_segmentator() {
+    cmake -S "$SEGMENTATOR/csrc" -B "$SEGMENTATOR/csrc/build" \
+        -DCMAKE_PREFIX_PATH="$(python -c 'import torch; print(torch.utils.cmake_prefix_path)');$CONDA_PREFIX" \
+        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
+        -DCMAKE_CUDA_COMPILER="$CUDACXX" -DCMAKE_CUDA_HOST_COMPILER="$CXX" \
+        -DPYTHON_EXECUTABLE="$(command -v python)" \
+        -DPYTHON_INCLUDE_DIR="$(python -c 'import sysconfig; print(sysconfig.get_path("include"))')" \
+        -DPYTHON_LIBRARY="$(python -c 'import os,sysconfig; print(os.path.join(sysconfig.get_config_var("LIBDIR"), sysconfig.get_config_var("LDLIBRARY")))')" \
+        -DCMAKE_INSTALL_PREFIX="$(python -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
+    cmake --build "$SEGMENTATOR/csrc/build" --parallel "$MAX_JOBS"
+    cmake --install "$SEGMENTATOR/csrc/build"
+    # Upstream's install(CODE) may leave an old link. Repair it explicitly.
+    python - "$SEGMENTATOR" <<'PYLINK'
+import os
+from pathlib import Path
+import sys
+import sysconfig
+
+source = Path(sys.argv[1]).resolve()
+link = Path(sysconfig.get_path("platlib")) / "segmentator"
+if link.exists() and not link.is_symlink():
+    raise RuntimeError(f"Refusing to replace a non-link package at {link}")
+temp = link.with_name(f".segmentator-link-{os.getpid()}")
+temp.symlink_to(source)
+temp.replace(link)
+PYLINK
+}
+
+install_flash_attention() {
+    python -c 'import torch; assert all(torch.cuda.get_device_capability(i)[0] >= 8 for i in range(torch.cuda.device_count())), "FlashAttention 2 requires Ampere, Ada, or Hopper GPUs."'
+    FLASH_ATTENTION_FORCE_BUILD=TRUE python -m pip install --no-build-isolation flash-attn==2.6.3
+    python "$ROOT/scripts/install_support.py" flash
+}
+
+validate_installation() {
+    python -m pip check
+    python "$ROOT/scripts/install_support.py" smoke
+}
+
+run_stage 'Host prerequisites' check_host
+run_stage 'Conda environment' activate_environment
+run_stage 'CUDA toolkit and compilers' install_toolchain
+run_stage 'PyTorch and GPU detection' install_pytorch
+run_stage 'Python dependencies' install_python_packages
+run_stage 'Third-party source preparation' prepare_sources
+run_stage 'CUDA extensions' build_cuda_extensions
+run_stage 'Project Python packages' install_project_packages
+run_stage 'Segmentator' build_segmentator
+if [[ $INSTALL_FLASH_ATTN == 1 ]]; then
+    run_stage 'FlashAttention (optional)' install_flash_attention
+fi
+run_stage 'Installation checks' validate_installation
+printf '\nInstallation complete. Activate with: conda activate %s\n' "$ENV_NAME"
+printf 'Keep %s: segmentator links to its compiled library there.\n' "$SEGMENTATOR"
