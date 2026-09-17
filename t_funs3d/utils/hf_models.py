@@ -23,6 +23,7 @@ from transformers import (
 
 from t_funs3d.utils.io import pad_detection_predictions
 from t_funs3d.utils.misc import mask_to_box
+from t_funs3d.utils.molmo_compat import apply_molmo_torch_compat
 
 
 def init_molmo():
@@ -41,6 +42,7 @@ def init_molmo():
         torch_dtype=torch.bfloat16,
         device_map="auto",
     )
+    apply_molmo_torch_compat(model)
     return model, processor
 
 
