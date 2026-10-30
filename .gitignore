@@ -177,3 +177,6 @@ checkpoints/
 datasets/
 *outputs/
 cache/
+
+# Except for the dataset config files
+!t_funs3d/config/class_agnostic_masks/data/datasets
